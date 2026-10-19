@@ -1,0 +1,377 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PDF Editor</title><style>
+*{box-sizing:border-box}body{margin:0;background:#e6e9ed;font:14px system-ui,Arial;color:#193039}header{height:57px;display:flex;align-items:center;gap:12px;background:#fff;border-bottom:1px solid #d6dfe5;padding:8px 17px;position:sticky;top:0;z-index:20}header strong{white-space:nowrap}header small{color:#6c8089}.sep{height:25px;border-left:1px solid #d6dfe5}button,select{font:inherit;cursor:pointer;border:1px solid #b8c8d0;background:#fff;border-radius:6px;padding:8px 11px}button.active{background:#127b71;border-color:#127b71;color:white}button.primary{background:#127b71;border-color:#127b71;color:white}button:disabled{opacity:.5;cursor:default}#status{font-size:12px;color:#687e87;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:32vw}main{height:calc(100vh - 57px);overflow:auto;padding:30px 24px;display:flex;justify-content:center;align-items:flex-start}.page{position:relative;flex:none;width:min(820px,90vw);background:#fff;box-shadow:0 2px 22px #87929b66;overflow:hidden}#pdf{display:block;width:100%;user-select:none;-webkit-user-drag:none}.layer{position:absolute;inset:0;z-index:3}.block{position:absolute;border:1px solid transparent;cursor:text}.block:hover{border:1px solid #198a91;background:#1296a00d}.block.selected{border:1.5px solid #ee911d;background:#ee911d0a}.graphic{position:absolute;touch-action:none;cursor:grab;z-index:4;border:1px solid transparent}.graphic:hover{border:1px dashed #ec6d2d}.graphic.dragging{cursor:grabbing;border:1px dashed #e95036}.graphic .visual{position:absolute;inset:0;background-repeat:no-repeat;pointer-events:none;opacity:0}.graphic.dragging .visual{opacity:1}.graphic.line .visual{top:50%;bottom:auto;height:2px;background:#069e91;transform:translateY(-50%)}.graphic.line[data-orientation='v'] .visual{left:50%;right:auto;top:0;bottom:0;width:2px;height:100%;transform:translateX(-50%)}.graphic.icon .visual{background-image:url('/original.png');background-size:var(--sheet-w) var(--sheet-h);background-position:var(--bgx) var(--bgy)}.object{position:absolute;z-index:5;touch-action:none;cursor:grab;display:none;border:1px solid transparent;box-sizing:border-box}.object:hover,.object.dragging{outline:2px dashed #f07823}.object.enabled{outline:3px solid #ee911d;background:#ed8b190a;cursor:grab;z-index:12}.object.enabled:active{cursor:grabbing}.object.enabled .handle{display:block}.object.dragging{outline:2px solid #ee6514;background:transparent}.object .picture{position:absolute;inset:0;pointer-events:none;opacity:0;background-repeat:no-repeat}.object.dragging .picture{opacity:1}.object .handle{position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;background:#f0871b;border:1px solid white;cursor:nwse-resize;display:none}.object:hover .handle,.object.dragging .handle{display:block}#editor{position:absolute;z-index:10;display:none;resize:none;min-width:95px;min-height:55px;border:1px solid #ed8b19;background:transparent;padding:0;outline:none;overflow:visible;white-space:normal;word-break:normal}#editor .rt-line{position:absolute;min-height:1px;margin:0;padding:0;white-space:pre;line-height:normal;outline:0;border:0;}#editor .rt-run{white-space:pre;outline:0;}#editor .rt-line:focus-within{outline:1px dotted #ec941c;}#hint{position:fixed;bottom:17px;left:50%;transform:translateX(-50%);background:#243e49eb;color:#fff;border-radius:30px;font-size:12px;padding:9px 16px;pointer-events:none;z-index:15}#counter{font-size:12px;color:#456d67}.spin{opacity:.65}@media(max-width:800px){header{gap:5px;padding:4px}header small,#status,.sep{display:none}button{padding:7px}main{padding:12px}}
+
+#editor .rt-line{position:absolute;display:block;white-space:pre;min-height:0;line-height:1;max-width:none;overflow:visible;font-kerning:normal;}
+#editor .rt-run{white-space:pre-wrap;overflow-wrap:anywhere;display:inline;line-height:inherit;vertical-align:baseline;}
+#editor{background-image:url("/textless.png");background-repeat:no-repeat;background-color:transparent;isolation:isolate;box-shadow:0 0 0 3px #ed8b1922;caret-color:#dc6515}
+#editor:focus{outline:none}
+#editor{min-height:0;box-sizing:border-box;overflow:visible;}
+#editor .rt-line{overflow:visible;}
+#editor .rt-line{white-space:pre-wrap;overflow-wrap:break-word;}
+#text-resize-handle{position:absolute;display:none;z-index:14;width:16px;height:16px;border:2px solid white;background:#e98917;border-radius:3px;cursor:nwse-resize;touch-action:none;box-shadow:0 1px 5px #0004;}
+
+/* Stage 5.4: compact neutral tool bar; functional editing and export untouched */
+header.toolbar{height:58px;gap:12px;padding:7px 18px;background:#ffffff;box-shadow:0 1px 2px #152e3710}
+.brand{display:flex;align-items:center;gap:9px;white-space:nowrap}.brand strong{font-weight:650;font-size:15px;letter-spacing:-.3px}
+.brand-mark{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:7px;background:#e9f5f2;color:#117f74;font-weight:800;font-size:11px}
+.tool-group{display:flex;align-items:center;gap:3px}.toolbar .tool,.toolbar .icon-btn{border:1px solid transparent;background:transparent;min-height:39px;padding:7px 10px;border-radius:8px;color:#3b5660;display:inline-flex;gap:7px;align-items:center;justify-content:center}
+.toolbar .tool:hover,.toolbar .icon-btn:hover{background:#eff5f5;border-color:#e4ebed}.toolbar .tool.active{background:#e4f3ef;border-color:#a8d7cc;color:#0a7368;font-weight:650}
+.glyph{font-size:19px;font-weight:600;line-height:1;min-width:18px;text-align:center}.tool-label{font-size:13px}.toolbar .icon-btn{width:38px;font-size:19px}.toolbar-spacer{flex:1;min-width:8px}
+.toolbar .save-btn{padding:10px 16px;border-radius:8px;white-space:nowrap;font-weight:650;border-color:#117e74;background:#117e74;color:#fff}.toolbar .save-btn:hover{background:#08685f}
+#counter{white-space:nowrap;color:#72858d;font-size:11px}#status{max-width:20vw;font-size:11px}#hint{font-size:12px;background:#29434dcc;bottom:14px}
+@media(max-width:940px){header.toolbar{padding:6px 9px;gap:6px}.brand strong,.tool-label,#counter{display:none}.brand-mark{width:27px;height:27px}.toolbar .tool{padding:7px 9px}.toolbar .sep{display:block;height:23px}.toolbar .save-btn{padding:9px 12px}#status{display:none}}
+@media(max-width:550px){.toolbar .sep{display:none}.toolbar .icon-btn{width:30px}.toolbar .tool{padding:7px}.toolbar .save-btn span{display:none}#hint{max-width:94vw;text-align:center;font-size:11px}}
+</style></head><body><header class="toolbar" aria-label="PDF editing tools"><div class="brand"><span class="brand-mark">PDF</span><strong>PDF Editor</strong></div><span class="sep"></span><div class="tool-group" role="group" aria-label="Edit tools"><button id="text" class="tool active" title="Edit text (double-click a text block)" aria-label="Edit text"><span class="glyph">T</span><span class="tool-label">Text</span></button><button id="line" class="tool" title="Move lines" aria-label="Move lines"><span class="glyph">━</span><span class="tool-label">Lines</span></button><button id="icon" class="tool" title="Move vector icons" aria-label="Move icons"><span class="glyph">◇</span><span class="tool-label">Icons</span></button><button id="image" class="tool" title="Move images" aria-label="Move images"><span class="glyph">▧</span><span class="tool-label">Images</span></button><button id="rect" disabled hidden title="Rectangles are not available" aria-label="Rectangles">Rectangles</button></div><span class="sep"></span><div class="tool-group" role="group" aria-label="History"><button id="undo" class="icon-btn" title="Undo last action" aria-label="Undo"><span class="glyph">↶</span></button><button id="reset" class="icon-btn" title="Reset all edits" aria-label="Reset all edits"><span class="glyph">⟲</span></button></div><span class="toolbar-spacer"></span><span id="counter" aria-live="polite"></span><span id="status" role="status">Ready</span><button id="save" class="primary save-btn" title="Download edited PDF">↓ <span>Save PDF</span></button></header><main><div id="page" class="page"><img id="pdf" src="/original.png" alt="PDF page" draggable="false"><div id="layer" class="layer"></div><div id="editor" contenteditable="true" spellcheck="false"></div><div id="text-resize-handle" title="Drag to resize text frame"></div></div></main><div id="hint">Double-click to edit text · Drag to move objects · Esc to finish</div><script>
+const model=__MODEL__, $=id=>document.getElementById(id), page=$('page'),layer=$('layer'),editor=$('editor'),image=$('pdf');
+// Original embedded font files are fetched from the PDF-backed local server.
+// Font names are encoded to prevent unsafe CSS / URL interpolation.
+const pdfFontNames=new Set(model.web_font_names||[]);
+const fontStyleSheet=document.createElement('style');
+for(const name of pdfFontNames){
+ const safeName=String(name).replace(/[^a-zA-Z0-9_-]/g,'');
+ if(safeName!==name)continue;
+ fontStyleSheet.appendChild(document.createTextNode(
+  `@font-face{font-family:"PDF-${safeName}";src:url("${window.parent.pdfFontURLs?.[name] || ''}") format("truetype");font-weight:normal;font-style:normal;font-display:block;}`
+ ));
+}
+document.head.appendChild(fontStyleSheet);
+
+const blocks=Object.fromEntries(model.blocks.map(x=>[x.name,x])), graph=Object.fromEntries(model.graphics.map(x=>[x.id,x]));
+const textFrameHeights={},textFrameWidths={},lineSourceIds={};
+const resizeHandle=$('text-resize-handle');let resizeStart=null;
+let objectMoves={},mode='text',selected=model.blocks[0]?.name||null,changes={},moves={},rev=0,pdfBytes=null,undo=[],active=false,updating=false,rendered=false,activeEdits=null;
+const px=n=>100*n/model.width,py=n=>100*n/model.height;
+function blockWidth(name){const b=blocks[name];return textFrameWidths[name]||b.bbox[2]-b.bbox[0]}
+function positionResizeHandle(){if(!active){resizeHandle.style.display='none';return;}resizeHandle.style.display='block';resizeHandle.style.left=(editor.offsetLeft+editor.offsetWidth-8)+'px';resizeHandle.style.top=(editor.offsetTop+editor.offsetHeight-8)+'px';}
+function announce(s){$('status').textContent=s}function snapshot(){undo.push(JSON.stringify({changes,moves,objectMoves,textFrameWidths}));if(undo.length>30)undo.shift()}function mark(){rev++;pdfBytes=null;rendered=false;$('counter').textContent=Object.keys(changes).length+' text · '+(Object.keys(moves).length+Object.keys(objectMoves).length)+' objects'}
+function blobBytes(b64){const str=atob(b64),out=new Uint8Array(str.length);for(let i=0;i<str.length;i++)out[i]=str.charCodeAt(i);return out}
+function b64toURL(b64,typ){return URL.createObjectURL(new Blob([blobBytes(b64)],{type:typ}))}
+function saveBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000)}
+function setMode(v){if(['rect'].includes(v)){announce('Rectangles are temporarily unavailable.');return;}closeEditor(true);mode=v;for(const name of ['text','line','icon','image','rect'])$(name).classList.toggle('active',name===v);layer.querySelectorAll('.block').forEach(n=>n.style.pointerEvents=v==='text'?'auto':'none');layer.querySelectorAll('.graphic').forEach(n=>n.style.pointerEvents=n.dataset.type===v?'auto':'none');layer.querySelectorAll('.object').forEach(n=>{n.style.display=n.dataset.type===v?'block':'none';n.style.pointerEvents=n.dataset.type===v?'auto':'none';n.classList.toggle('enabled',n.dataset.type===v)});announce(v==='text'?'Double-click a text block to edit': 'Objects: '+layer.querySelectorAll('.object[data-type=\"'+v+'\"]').length+' · drag the highlighted object')}
+for(const n of ['text','line','icon','image','rect'])$(n).onclick=()=>setMode(n);
+function blockText(name){return Object.hasOwn(changes,name)?changes[name]:blocks[name].lines.join('\n')}
+// Stage 5.2: edit a whole block as styled DOM runs (no plaintext textarea).
+// Original PDF spans are displayed at their original relative positions on first open.
+// Browser editing keeps run styles; exporter still receives plain text via existing API.
+const itemById=Object.fromEntries(model.items.map(x=>[x.id,x]));
+const srcBlockText=name=>blocks[name].lines.join('\n');
+function htmlSafe(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function cssColor(n){return '#'+((Number(n)||0)&0xffffff).toString(16).padStart(6,'0')}
+function family(font){
+ const clean=String(font||'').split('+').pop();
+ if(pdfFontNames.has(clean))return `"PDF-${clean}", Georgia, serif`;
+ const n=clean.toLowerCase();
+ if(n.includes('plexserif')||n.includes('times')||n.includes('georgia'))return 'Georgia, "Times New Roman", serif';
+ if(n.includes('arial')||n.includes('helvetica'))return 'Arial, sans-serif';
+ return 'Georgia, serif';
+}
+// Position each source PDF line in page coordinates, not as paragraphs in a text area.
+// The narrow opaque backing covers the original glyphs, avoiding doubled text.
+function styleForSpan(sp,sc){
+ const name=String(sp.font||'');
+ const bold=/bold|semibold|medium/i.test(name);
+ const italic=/italic|oblique/i.test(name);
+ const embedded=pdfFontNames.has(name.split('+').pop());
+ return `font-family:${family(name)};font-size:${(Number(sp.size||10)*sc).toFixed(2)}px;color:${cssColor(sp.color)};font-weight:${embedded?400:(bold?700:400)};font-style:${italic?'italic':'normal'};`;
+}
+function applySourceRowStyle(){
+ // In a contenteditable Chromium can insert bare text nodes outside styled spans.
+ // Keeping source style on the row itself makes newly typed text inherit PDF color/size.
+ const sc=page.clientWidth/model.width;
+ for(const row of editor.querySelectorAll(':scope > .rt-line')){
+  const item=itemById[row.dataset.sourceId];
+  const sp=item?.spans?.find(s=>String(s.text||'').trim())||item?.spans?.[0];if(!sp)continue;
+  const css=styleForSpan(sp,sc);
+  row.style.cssText+=`;${css}`;
+  // Run styles belong to the original PDF spans, not their HTML index.
+  // Chromium can split/merge spans during typing: never repaint by index.
+  for(const run of row.querySelectorAll('.rt-run')){
+   if(!run.hasAttribute('data-pdf-font'))continue;
+   // Retain the exact inline style from lineMarkup / contenteditable.
+  }
+ }
+}
+function lineMarkup(item, block, lineText=null) {
+ const sc=page.clientWidth/model.width;
+ const bounds=item.bbox;const top=(bounds[1]-block.bbox[1])*sc;
+ const left=(bounds[0]-block.bbox[0])*sc;
+ const sp0=item.spans?.find(sp=>String(sp.text||'').trim())||item.spans?.[0]||{font:'Arial',size:10,color:0};
+ // Invisible trailing whitespace in some PDFs has an unrelated color
+ // (often black even when the visible line is white). Do not let that
+ // layout-only span control new typing or the appearance of edit mode.
+ const normalizedSpans=item.spans.map((sp,i,arr)=>{
+  if((sp.text||'').trim())return sp;
+  let adjacent=null;
+  for(let j=i-1;j>=0;j--)if((arr[j].text||'').trim()){adjacent=arr[j];break}
+  if(!adjacent)for(let j=i+1;j<arr.length;j++)if((arr[j].text||'').trim()){adjacent=arr[j];break}
+  return adjacent?{...sp,font:adjacent.font,size:adjacent.size,color:adjacent.color}:sp;
+ });
+ // For appended text, preserve original mixed styles and inherit the last
+ // visible glyph's style, never a trailing PDF layout-space style.
+ const sourceText=normalizedSpans.map(sp=>sp.text||'').join('');
+ const visibleSource=sourceText.replace(/\s+$/u,'');
+ let spans;
+ if(lineText===null)spans=normalizedSpans;
+ else if(visibleSource && lineText.startsWith(visibleSource)){
+  let remaining=visibleSource.length;
+  spans=[];
+  for(const sp of normalizedSpans){
+   const part=(sp.text||'').slice(0,remaining);
+   if(part)spans.push({...sp,text:part});
+   remaining-=part.length;if(remaining<=0)break;
+  }
+  const last=spans.slice().reverse().find(sp=>String(sp.text||'').trim())||sp0;
+  if(lineText.length>visibleSource.length)spans.push({...last,text:lineText.slice(visibleSource.length)});
+ }else spans=[{...sp0,text:lineText}];
+ const runs=spans.map(sp=>{
+  const css=styleForSpan(sp,sc);
+  return `<span class="rt-run" style="${css}" data-pdf-font="${htmlSafe(sp.font||'')}">${htmlSafe(sp.text||'').replace(/\n/g,'<br>')}</span>`;
+ }).join('');
+ const bg='transparent';
+ // Slightly taller than text glyphs, but not tall enough to cover nearby lines.
+ const h=Math.max(8,(bounds[3]-bounds[1])*sc);
+ return `<div class="rt-line" data-source-id="${htmlSafe(item.id)}" style="left:${left.toFixed(2)}px;top:${top.toFixed(2)}px;min-height:${h.toFixed(2)}px;background:${bg};${styleForSpan(sp0,sc)}">${runs}</div>`;
+}
+function richHTML(name){const block=blocks[name];return (block.line_ids||[]).map(id=>itemById[id]).filter(Boolean).map(item=>lineMarkup(item,block)).join('')}
+function editableText(){
+ // Source lines are absolutely positioned but DOM order remains PDF reading order.
+ const parts=[];
+ for(const el of editor.querySelectorAll(':scope > .rt-line')){
+  const copy=el.cloneNode(true);
+  copy.querySelectorAll('br').forEach(n=>n.replaceWith(document.createTextNode('\n')));
+  // Chrome may nest DIV elements on Enter. Retain those newlines.
+  const lines=[];function extract(node){for(const child of node.childNodes){if(child.nodeType===3)lines.push(child.nodeValue||'');else if(child.nodeName==='BR')lines.push('\n');else if(child.nodeName==='DIV'){lines.push('\n');extract(child)}else extract(child)}}extract(copy);
+  parts.push(lines.join(''));
+ }
+ return parts.join('\n').replace(/\u200b/g,'').replace(/\r/g,'').replace(/\u00a0/g,' ');
+}
+function editorLineSources(){
+ const ids=[];
+ for(const row of editor.querySelectorAll(':scope > .rt-line')){
+  const n=1+row.querySelectorAll('br').length;
+  for(let i=0;i<n;i++)ids.push(row.dataset.sourceId);
+ }
+ return ids;
+}
+function inheritStyle(name,text){
+ const block=blocks[name],newLines=text.split('\n');
+ const fallback=block.line_ids||[];
+ const saved=lineSourceIds[name];
+ const sourceIds=saved?.length===newLines.length?saved:fallback;
+ // Every logical line must map to a source. Never silently drop overflow
+ // when Enter added more lines than the initial PDF contained.
+ const safeSourceIds=sourceIds.length?sourceIds:[fallback[0]];
+ // Consecutive logical lines originating from the same source PDF line
+ // stay in a single positioned editable row and share that source style.
+ const groups=[];
+ newLines.forEach((line,i)=>{
+  const id=safeSourceIds[Math.min(i,safeSourceIds.length-1)];
+  if(groups.length&&groups[groups.length-1].id===id)groups[groups.length-1].lines.push(line);
+  else groups.push({id,lines:[line]});
+ });
+ return groups.map((entry,i)=>{
+  const orig=itemById[entry.id];if(!orig)return '';
+  return lineMarkup(orig,block,entry.lines.join('\n'));
+ }).join('');
+}
+// The source bbox is only the initial geometry. New lines must extend the editable
+// surface, otherwise the overflow is visible but outside the interactive hit area.
+function growEditorToContent(){
+ if(!active)return;
+ const top=editor.getBoundingClientRect().top;
+ const original=Math.max(75,(blocks[selected].bbox[3]-blocks[selected].bbox[1])*page.clientWidth/model.width);
+ let bottom=top+original;
+ for(const row of editor.querySelectorAll(':scope > .rt-line')){
+  const rect=row.getBoundingClientRect();
+  bottom=Math.max(bottom,rect.bottom);
+  for(const run of row.querySelectorAll('.rt-run'))bottom=Math.max(bottom,run.getBoundingClientRect().bottom);
+  // Explicit BR and long wrapped content can make a row taller than the source bbox.
+  bottom=Math.max(bottom,rect.top+row.scrollHeight);
+ }
+ const measured=Math.ceil(Math.max(original,bottom-top+12));
+ editor.style.height=measured+'px';
+ positionResizeHandle();
+ // The selection frame and editor must share the same measured bottom.
+ textFrameHeights[selected]=Math.max(measured*model.width/page.clientWidth,blocks[selected].bbox[3]-blocks[selected].bbox[1]);
+ syncBlockHitArea(selected);
+ const textBottom=editor.getBoundingClientRect().bottom;
+ const pageBottom=page.getBoundingClientRect().bottom;
+ editor.dataset.outsidePage=textBottom>pageBottom+2?'yes':'no';
+ if(editor.dataset.outsidePage==='yes')announce('Text exceeds PDF page. Overflow will be clipped on export.');
+}
+function syncBlockHitArea(name){
+ const block=blocks[name],hit=layer.querySelector(`[data-block="${CSS.escape(name)}"]`);
+ if(!hit)return;
+ const original=block.bbox[3]-block.bbox[1];
+ // Save and restore exact on-screen frame geometry in PDF units, not line counts.
+ // The geometry is recomputed while typing; switching modes cannot shrink it.
+ const pdfHeight=Math.max(original,textFrameHeights[name]||0);
+ hit.style.height=py(pdfHeight)+'%';
+ hit.style.width=px(blockWidth(name))+'%';
+}
+function closeEditor(commit){
+ if(!active)return;
+ // Capture the current live layout before hiding the editor or changing blocks.
+ growEditorToContent();
+ const name=selected;
+ active=false;
+ if(commit){const val=editableText();lineSourceIds[name]=editorLineSources();if(val!==blockText(name)){snapshot();changes[name]=val;mark();announce('Text updated · rendering PDF…');schedule()}}
+ syncBlockHitArea(name);
+ editor.style.display='none';resizeHandle.style.display='none';page.style.overflow='hidden';
+}
+function openEditor(name, pointerEvent=null){
+ closeEditor(true);selected=name;
+ const e=layer.querySelector(`[data-block="${CSS.escape(name)}"]`),b=blocks[name].bbox;
+ layer.querySelectorAll('.block').forEach(n=>n.classList.toggle('selected',n.dataset.block===name));
+ editor.style.left=e.style.left;editor.style.top=e.style.top;editor.style.width=blockWidth(name)*page.clientWidth/model.width+'px';editor.style.setProperty('--pdf-scale',String(page.clientWidth/model.width));
+ editor.style.height=Math.max(75,(textFrameHeights[name]||b[3]-b[1])*page.clientWidth/model.width)+'px';
+ editor.style.backgroundSize=page.clientWidth+'px '+(page.clientWidth*model.height/model.width)+'px';
+ editor.style.backgroundPosition=(-b[0]*page.clientWidth/model.width)+'px '+(-b[1]*page.clientWidth/model.width)+'px';
+ editor.innerHTML=Object.hasOwn(changes,name)?inheritStyle(name,changes[name]):richHTML(name);
+ if(Object.hasOwn(changes,name) && editableText()!==changes[name]){
+  console.warn('Text restore mismatch, using safe per-line fallback', name);
+  const lines=changes[name].split('\n'); const ids=lineSourceIds[name]||[]; const b=blocks[name];
+  editor.innerHTML=lines.map((line,i)=>lineMarkup(itemById[ids[i]]||itemById[b.line_ids[Math.min(i,b.line_ids.length-1)]],b,line)).join('');
+  if(editableText()!==changes[name])announce('Warning: text restore mismatch. Verify content before saving.');
+ }
+ applySourceRowStyle();
+ editor.style.display='block';active=true;page.style.overflow='visible';
+ for(const row of editor.querySelectorAll(':scope > .rt-line'))row.style.maxWidth=Math.max(35,editor.offsetWidth-row.offsetLeft-3)+'px';
+ editor.focus();positionResizeHandle();
+ updateVisualLineOffsets();growEditorToContent();
+ const sel=window.getSelection();let r=null;
+ if(pointerEvent){
+   const sourceLines=[...editor.querySelectorAll(':scope > .rt-line')];
+   const nearest=sourceLines.reduce((best,node)=>Math.abs(node.getBoundingClientRect().top-pointerEvent.clientY)<Math.abs(best.getBoundingClientRect().top-pointerEvent.clientY)?node:best,sourceLines[0]);
+   if(nearest){r=document.createRange();r.selectNodeContents(nearest);r.collapse(false)}
+ }
+ if(!r){r=document.createRange();r.selectNodeContents(editor);r.collapse(false)}
+ sel.removeAllRanges();sel.addRange(r);
+}
+for(const b of model.blocks){const div=document.createElement('div');div.className='block';div.dataset.block=b.name;div.style.left=px(b.bbox[0])+'%';div.style.top=py(b.bbox[1])+'%';div.style.width=px(b.bbox[2]-b.bbox[0])+'%';div.style.height=py(b.bbox[3]-b.bbox[1])+'%';div.title='Double-click to edit '+b.name;div.ondblclick=(e)=>openEditor(b.name,e);div.onclick=()=>{selected=b.name;layer.querySelectorAll('.block').forEach(x=>x.classList.toggle('selected',x===div))};layer.appendChild(div)}
+// Stable line geometry: never let Chromium create block elements inside PDF source rows.
+// Enter inserts one explicit BR; Backspace can remove it without changing the source row's CSS anchor.
+editor.addEventListener('beforeinput',e=>{
+ if(e.inputType==='insertParagraph'||e.inputType==='insertLineBreak'){
+  e.preventDefault();
+  const sel=getSelection();if(!sel.rangeCount)return;
+  const row=sel.anchorNode?.parentElement?.closest('.rt-line');
+  if(!row)return;
+  const r=sel.getRangeAt(0);r.deleteContents();
+  // A trailing BR alone is not rendered as a blank editable line in Chrome.
+  // Place a zero-width caret anchor after it. It is stripped from PDF text.
+  const br=document.createElement('br');r.insertNode(br);
+  const anchor=document.createTextNode('\u200b');br.after(anchor);
+  r.setStart(anchor,1);r.collapse(true);sel.removeAllRanges();sel.addRange(r);
+  updateVisualLineOffsets();growEditorToContent();
+ }
+});
+function updateVisualLineOffsets(){
+ // Recompute from ORIGINAL top anchors. A CSS translate does not affect
+ // scrollHeight, so previous transforms never accumulate measurement drift.
+ const rows=[...editor.querySelectorAll(':scope > .rt-line')];
+ let offset=0;
+ for(const row of rows){
+  row.style.transform='';
+  const first=row.querySelector('.rt-run');
+  const size=first?parseFloat(getComputedStyle(first).fontSize):12;
+  const expected=Math.max(size*1.22,parseFloat(row.style.minHeight)||0);
+  const actual=Math.max(row.scrollHeight,row.offsetHeight);
+  row.style.transform=offset?`translateY(${offset.toFixed(2)}px)`:'';
+  // Extra visual rows must shift following source lines, but not other blocks.
+  offset+=Math.max(0,actual-expected);
+  const brs=row.querySelectorAll('br').length;
+  if(brs&&actual<=expected+2)offset+=brs*Math.max(size*1.3,12);
+ }
+}
+editor.addEventListener('input',()=>{updateVisualLineOffsets();growEditorToContent()});
+editor.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();closeEditor(true)}else if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();closeEditor(true);refresh()}});
+editor.addEventListener('blur',()=>{if(active&&!resizeStart)closeEditor(true)});
+resizeHandle.addEventListener('pointerdown',e=>{if(!active)return;e.preventDefault();e.stopPropagation();snapshot();resizeStart={x:e.clientX,y:e.clientY,w:editor.offsetWidth,h:editor.offsetHeight,name:selected};resizeHandle.setPointerCapture(e.pointerId);});
+resizeHandle.addEventListener('pointermove',e=>{if(!resizeStart)return;e.preventDefault();const scale=model.width/page.clientWidth;const w=Math.max(90,resizeStart.w+e.clientX-resizeStart.x);const h=Math.max(55,resizeStart.h+e.clientY-resizeStart.y);editor.style.width=w+'px';editor.style.height=h+'px';textFrameWidths[resizeStart.name]=w*scale;textFrameHeights[resizeStart.name]=h*scale;for(const row of editor.querySelectorAll(':scope > .rt-line')){row.style.maxWidth=Math.max(35,w-row.offsetLeft-3)+'px';}updateVisualLineOffsets();growEditorToContent();syncBlockHitArea(resizeStart.name);positionResizeHandle();});
+resizeHandle.addEventListener('pointerup',e=>{if(!resizeStart)return;const name=resizeStart.name;resizeStart=null;const val=editableText();changes[name]=val;mark();announce('Text frame resized · rendering PDF…');positionResizeHandle();resizeHandle.releasePointerCapture(e.pointerId);schedule();});
+let queued=null;function schedule(){clearTimeout(queued);queued=setTimeout(refresh,250)}
+for(const g of model.graphics){const div=document.createElement('div');div.className='graphic '+g.kind;div.dataset.type=g.kind;div.dataset.graphic=g.id;div.dataset.orientation=g.orientation||'h';div.style.left=px(g.bbox[0])+'%';div.style.top=py(g.bbox[1])+'%';div.style.width=(g.kind==='line'&&g.orientation==='v'?'12px':Math.max(1,px(g.bbox[2]-g.bbox[0]))+'%');if(g.kind==='icon')div.style.height=Math.max(0.4,py(g.bbox[3]-g.bbox[1]))+'%';else if(g.orientation==='v'){div.style.height=py(g.bbox[3]-g.bbox[1])+'%';div.style.marginLeft='-6px';}else {div.style.height='12px';div.style.marginTop='-6px';}const art=document.createElement('div');art.className='visual';div.append(art);layer.append(div);div.style.pointerEvents='none';let start=null;
+function updatePosition(dx,dy){div.style.transform=`translate(${dx*page.clientWidth/model.width}px,${dy*page.clientWidth/model.width}px)`}
+function syncArt(){art.style.setProperty('--sheet-w',page.clientWidth+'px');art.style.setProperty('--sheet-h',page.clientWidth*model.height/model.width+'px');art.style.setProperty('--bgx',(-g.bbox[0]*page.clientWidth/model.width)+'px');art.style.setProperty('--bgy',(-g.bbox[1]*page.clientWidth/model.width)+'px')}
+new ResizeObserver(syncArt).observe(page);
+div.addEventListener('pointerdown',e=>{if(mode!==g.kind)return;e.preventDefault();e.stopPropagation();const old=moves[g.id]||{dx:0,dy:0};start={x:e.clientX,y:e.clientY,dx:old.dx,dy:old.dy};div.setPointerCapture(e.pointerId);div.classList.add('dragging');announce('Moving '+(g.kind==='line'?'line':'icon')+'…')});
+div.addEventListener('pointermove',e=>{if(!start)return;const sc=model.width/page.clientWidth;const dx=start.dx+(e.clientX-start.x)*sc,dy=start.dy+(e.clientY-start.y)*sc;updatePosition(dx,dy);div.dataset.pending=JSON.stringify({dx,dy})});
+div.addEventListener('pointerup',()=>{if(!start)return;start=null;div.classList.remove('dragging');snapshot();moves[g.id]=JSON.parse(div.dataset.pending||'{"dx":0,"dy":0}');mark();schedule()});
+div.addEventListener('pointercancel',()=>{start=null;div.classList.remove('dragging')});
+div.ondblclick=e=>{if(mode!==g.kind)return;e.stopPropagation();snapshot();delete moves[g.id];updatePosition(0,0);mark();schedule()};
+}
+const objectRef=Object.fromEntries((model.objects||[]).map(o=>[o.id,o]));
+for(const obj of model.objects||[]){
+  const el=document.createElement('div');el.className='object';el.dataset.type=obj.kind;el.dataset.obj=obj.id;
+  const b=obj.bbox,w=b[2]-b[0],h=b[3]-b[1];el.style.left=px(b[0])+'%';el.style.top=py(b[1])+'%';el.style.width=px(w)+'%';el.style.height=py(h)+'%';
+  el.title=obj.kind==='image'?'Image: drag to move':'Rectangle: drag to move';const pic=document.createElement('div');pic.className='picture';const handle=document.createElement('div');handle.className='handle';el.append(pic,handle);layer.append(el);
+  let start=null;
+  function syncPicture(){const sw=page.clientWidth,sh=sw*model.height/model.width;pic.style.backgroundImage="url('/original.png')";pic.style.backgroundSize=sw+'px '+sh+'px';pic.style.backgroundPosition=(-b[0]*sw/model.width)+'px '+(-b[1]*sh/model.height)+'px';}
+  new ResizeObserver(syncPicture).observe(page);
+  function apply(){const v=objectMoves[obj.id]||{dx:0,dy:0,sx:1,sy:1};el.style.transform=`translate(${v.dx*page.clientWidth/model.width}px,${v.dy*page.clientWidth/model.width}px)`;el.style.width=px(w*v.sx)+'%';el.style.height=py(h*v.sy)+'%';}
+  el.addEventListener('pointerdown',e=>{if(mode!==obj.kind)return;e.preventDefault();e.stopPropagation();const v=objectMoves[obj.id]||{dx:0,dy:0,sx:1,sy:1};snapshot();start={x:e.clientX,y:e.clientY,base:{...v},resize:e.target===handle};el.setPointerCapture(e.pointerId);el.classList.add('dragging');pic.style.opacity='1';announce('Moving '+(obj.kind==='image'?'image':'rectangle')+'…');});
+  el.addEventListener('pointermove',e=>{if(!start)return;const scale=model.width/page.clientWidth,dx=(e.clientX-start.x)*scale,dy=(e.clientY-start.y)*scale;const v={...start.base};if(start.resize){v.sx=Math.max(.1,Math.min(8,v.sx+dx/w));v.sy=Math.max(.1,Math.min(8,v.sy+dy/h));}else{v.dx+=dx;v.dy+=dy;}objectMoves[obj.id]=v;apply();});
+  el.addEventListener('pointerup',()=>{if(!start)return;start=null;el.classList.remove('dragging');pic.style.opacity='0';mark();schedule();});
+  el.addEventListener('pointercancel',()=>{start=null;el.classList.remove('dragging');pic.style.opacity='0';});
+  el.addEventListener('dblclick',e=>{e.stopPropagation();delete objectMoves[obj.id];apply();mark();schedule()});
+}
+let renderJob=Promise.resolve();
+async function refresh(){
+  closeEditor(true);
+  const requestVersion=rev;
+  const job=renderJob.then(async()=>{
+    if(rendered && pdfBytes)return;
+    const n=rev;updating=true;page.classList.add('spin');
+    announce('Rendering PDF…');
+    try{
+      const r=await fetch('/api/render',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({blocks:changes,line_sources:lineSourceIds,graphics:moves,objects:objectMoves,frames:textFrameWidths})});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'Export failed');
+      if(rev!==n)return;
+      pdfBytes=blobBytes(d.pdf);
+      image.src=b64toURL(d.png,'image/png');rendered=true;
+      announce('Ready · '+Object.keys(changes).length+' text blocks, '+Object.keys(objectMoves).length+' objects');
+    }catch(e){pdfBytes=null;rendered=false;announce('Not saved: '+e.message);}
+    finally{updating=false;page.classList.remove('spin');}
+  });
+  renderJob=job.catch(()=>{});
+  await job;
+  if(rev!==requestVersion && !rendered)return refresh();
+}
+window.restorePageEdits=(state)=>{
+  changes=structuredClone(state.blocks||{});
+  Object.keys(lineSourceIds).forEach(k=>delete lineSourceIds[k]);Object.assign(lineSourceIds,state.line_sources||{});
+  moves=structuredClone(state.graphics||{});objectMoves=structuredClone(state.objects||{});
+  Object.keys(textFrameWidths).forEach(k=>delete textFrameWidths[k]);Object.assign(textFrameWidths,state.frames||{});
+  for(const el of layer.querySelectorAll('.graphic')){
+    const m=moves[el.dataset.graphic]||{dx:0,dy:0};
+    el.style.transform=`translate(${m.dx*page.clientWidth/model.width}px,${m.dy*page.clientWidth/model.width}px)`;
+  }
+  for(const el of layer.querySelectorAll('.object')){
+    const o=objectRef[el.dataset.obj],v=objectMoves[o.id]||{dx:0,dy:0,sx:1,sy:1};
+    el.style.transform=`translate(${v.dx*page.clientWidth/model.width}px,${v.dy*page.clientWidth/model.width}px)`;
+    el.style.width=px((o.bbox[2]-o.bbox[0])*v.sx)+'%';el.style.height=py((o.bbox[3]-o.bbox[1])*v.sy)+'%';
+  }
+  for(const b of model.blocks)syncBlockHitArea(b.name);
+  mark();refresh();
+};
+window.getCurrentPageEdits=()=>{closeEditor(true);return {
+blocks:changes,line_sources:lineSourceIds,graphics:moves,objects:objectMoves,frames:textFrameWidths,
+_hasEdits:!!(Object.keys(changes).length||Object.keys(moves).length||Object.keys(objectMoves).length||Object.keys(textFrameWidths).length)
+};};
+window.collectStablePageEdits=async()=>{const data=window.getCurrentPageEdits();if(data._hasEdits){await refresh();if(!rendered)throw Error('Page export failed; cannot switch or save safely');}return data;};
+$('save').onclick=async()=>{
+  closeEditor(true);
+  const button=$('save');button.disabled=true;
+  try{
+    await refresh();
+    if(!rendered||!pdfBytes){announce('Cannot download: PDF rendering failed');return;}
+    saveBlob(new Blob([pdfBytes],{type:'application/pdf'}),'edited-stage51.pdf');
+    announce('PDF downloaded');
+  }finally{button.disabled=false;}
+};
+$('undo').onclick=()=>{closeEditor(true);if(!undo.length)return;const v=JSON.parse(undo.pop());changes=v.changes;Object.keys(lineSourceIds).forEach(k=>delete lineSourceIds[k]);moves=v.moves;objectMoves=v.objectMoves||{};Object.keys(textFrameWidths).forEach(k=>delete textFrameWidths[k]);Object.assign(textFrameWidths,v.textFrameWidths||{});for(const el of layer.querySelectorAll('.graphic')){const g=graph[el.dataset.graphic],m=moves[el.dataset.graphic]||{dx:0,dy:0};if(g)el.style.transform=`translate(${m.dx*page.clientWidth/model.width}px,${m.dy*page.clientWidth/model.width}px)`}for(const el of layer.querySelectorAll('.object')){const o=objectRef[el.dataset.obj],v=objectMoves[o.id]||{dx:0,dy:0,sx:1,sy:1};el.style.transform=`translate(${v.dx*page.clientWidth/model.width}px,${v.dy*page.clientWidth/model.width}px)`;el.style.width=px((o.bbox[2]-o.bbox[0])*v.sx)+'%';el.style.height=py((o.bbox[3]-o.bbox[1])*v.sy)+'%';}for(const b of model.blocks){delete textFrameHeights[b.name];syncBlockHitArea(b.name)}mark();refresh()};
+$('reset').onclick=()=>{if(!confirm('Reset all edits?'))return;closeEditor(false);snapshot();changes={};Object.keys(lineSourceIds).forEach(k=>delete lineSourceIds[k]);moves={};objectMoves={};Object.keys(textFrameWidths).forEach(k=>delete textFrameWidths[k]);mark();location.reload()};
+mark();setMode('text');for(const b of model.blocks)syncBlockHitArea(b.name);
+</script></body></html>

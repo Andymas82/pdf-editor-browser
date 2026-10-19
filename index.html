@@ -1,0 +1,169 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PDF Editor — Browser Prototype</title><style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#e8edf0;color:#19343b}#top{display:flex;gap:14px;align-items:center;background:white;padding:12px 20px;box-shadow:0 1px 8px #aaa4;flex-wrap:wrap}#top strong{font-size:17px}#file{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}#selectPdf{display:inline-flex;align-items:center;justify-content:center;background:#087e73;border:0;border-radius:6px;padding:11px 15px;color:white;font:inherit;cursor:pointer}#selectPdf:focus-visible{outline:3px solid #165fcc;outline-offset:3px}#chosenFile{font-size:13px;color:#51646a;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#open{display:none}button{background:#087e73;border:0;border-radius:6px;padding:11px 15px;color:white;font:inherit;cursor:pointer}button:disabled{opacity:.5;cursor:default}#status{font-size:12px;max-width:100%;overflow-wrap:anywhere}#log{background:#112534;color:#b0e9d7;padding:12px;margin:10px 16px;white-space:pre-wrap;max-height:135px;overflow:auto;font-size:12px}iframe{border:0;width:100%;height:calc(100vh - 154px);display:block}#disclaimer{font-size:12px;color:#51646a;padding:0 16px}body #log{display:none}body.ready iframe{height:calc(100vh - 74px)}
+#engineProgress{display:inline-flex;align-items:center;gap:9px;font-size:13px;color:#51646a}#engineProgress[hidden]{display:none}#engineProgress::before{content:"";width:14px;height:14px;border:2px solid #c9d8d7;border-top-color:#087e73;border-radius:50%;animation:engineSpin .8s linear infinite}@keyframes engineSpin{to{transform:rotate(360deg)}}#status:empty{display:none}#status{color:#51646a}#status.error{color:#b42318}body:not(.ready) iframe{height:calc(100vh - 110px)}
+</style></head><body><div id="top"><strong>PDF Editor <small>Web v0.5.2 Multi-page</small></strong><input id="file" type="file" accept=".pdf,application/pdf" aria-label="Choose PDF file"><label id="selectPdf" for="file" role="button" tabindex="0">Select PDF</label><span id="chosenFile">No file selected</span><button id="open" type="button">Open PDF</button><span id="navigation" hidden><button id="prev" type="button">&#9664;</button> <span id="counter">Page 1 / 1</span> <button id="next" type="button">&#9654;</button> <button id="complete" type="button">Save complete PDF</button></span><span id="engineProgress" role="status" aria-live="polite">Preparing PDF Editor…</span><span id="status" role="status" aria-live="polite"></span></div><div id="disclaimer">Edit text, images and lines directly in your browser. Your PDF stays on your device.</div><pre id="log">Waiting for PDF…</pre><iframe id="editor" title="PDF Editor" hidden sandbox="allow-scripts allow-same-origin allow-downloads"></iframe><script type="module">
+const $=id=>document.getElementById(id), VERSION='0.29.4', PY='1.28.2';
+const CDN=`https://cdn.jsdelivr.net/pyodide/v${VERSION}/full/`;
+let py, editorHTML, loading=false, pageIndex=0, pageCount=1, busyPage=false, initPromise=null;
+const WHEEL='https://files.pythonhosted.org/packages/58/8c/d897dcd32a25b58186c968b15ce4324ca029e9d96460de12325314e390be/pymupdf-1.28.2-cp313-abi3-pyemscripten_2025_0_wasm32.whl';
+const ENGINE_FILES=['engine.py','stage487.py','stage40.py','stage32_core.py','detect_blocks.py','textless_preview.py','vector_path_move.py','object_transform_safe.py','stage487_base14.py','engine_single.py','multipage.py'];
+const pendingPages=new Map();
+window.downloadEditedPdf=(b64,name='edited-document.pdf')=>{
+  const binary=atob(b64), arr=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)arr[i]=binary.charCodeAt(i);
+  const url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
+  const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);log('Download requested: '+name+' ('+arr.length+' bytes)');
+};
+window.editorDiagnostic=(message)=>log('Editor: '+message);
+
+function setStatus(message='',isError=false){const el=$('status');el.textContent=message;el.classList.toggle('error',isError)}
+function reportError(context,error){console.error('[PDF Editor] '+context,error);$('engineProgress').hidden=true;setStatus(context+' Please try again.',true)}
+function log(s){console.debug('[PDF Editor]',s)}
+// One shared initialization runs in the background and on demand; never twice at once.
+function init(){
+ if(py && editorHTML)return Promise.resolve();
+ if(initPromise)return initPromise;
+ initPromise=initializeEngine().catch(error=>{
+   initPromise=null;py=null;editorHTML=null;
+   reportError('Unable to prepare PDF Editor.',error);
+   throw error;
+ });
+ return initPromise;
+}
+async function initializeEngine(){
+ const started=performance.now();
+ log('Preparing browser PDF engine in the background…');
+ // Fetch our small, same-origin scripts simultaneously with the Python runtime.
+ const moduleAssets=Promise.all([...ENGINE_FILES,'editor-template.html'].map(async name=>{
+   const response=await fetch('./'+name);
+   if(!response.ok)throw Error(`Cannot load ${name} (HTTP ${response.status})`);
+   return [name,await response.arrayBuffer()];
+ }));
+ const {loadPyodide}=await import(CDN+'pyodide.mjs');
+ const runtime=await loadPyodide({indexURL:CDN});
+ log('Python runtime ready; loading PDF packages…');
+ await runtime.loadPackage('micropip');
+ // Exact upstream wheel of the verified version. No runtime PyPI JSON request.
+ await runtime.loadPackage(WHEEL);
+ await runtime.runPythonAsync('import micropip; await micropip.install(["pypdf", "fonttools"])');
+ const assets=await moduleAssets;
+ for(const [name,buffer] of assets){
+   if(name==='editor-template.html')editorHTML=new TextDecoder().decode(buffer);
+   else runtime.FS.writeFile('/home/pyodide/'+name,new Uint8Array(buffer));
+ }
+ runtime.runPython('import sys; sys.path.insert(0,"/home/pyodide"); import engine; import multipage');
+ py=runtime;
+ log('Python PDF engine ready in '+((performance.now()-started)/1000).toFixed(1)+' s');$('engineProgress').hidden=true;setStatus('');
+}
+
+window.renderPDF=async (_url,request)=>{
+ try{
+  const data=JSON.parse(request.body);
+  log('Export request: '+Object.keys(data.blocks||{}).length+' edited text blocks');
+  py.globals.set('bridge_request',JSON.stringify(data));
+  const result=await py.runPythonAsync('multipage.render_page(bridge_request)');
+  const parsed=JSON.parse(result);
+  if(!parsed.png)throw Error('Python exporter returned no PDF or preview');
+  log('Page preview rendered');
+  return {ok:true,json:async()=>parsed};
+ }catch(e){const message=String(e)+'\n'+(e.stack||'');console.error('[PDF Editor] Export error',e);return {ok:false,json:async()=>({error:message})};}
+};
+function disableGraphics(html){
+ html=html.replace('const model=__MODEL__','const model=__MODEL__');
+ html=html.replace("fetch('/api/render',","window.parent.renderPDF('/api/render',");
+ html=html.replace("saveBlob(new Blob([pdfBytes],{type:'application/pdf'}),'edited-stage51.pdf');","window.parent.downloadEditedPdf(btoa(Array.from(pdfBytes, b=>String.fromCharCode(b)).join('')),'edited-stage51.pdf');");
+ html=html.replace("announce('Not saved: '+e.message);","announce('Not saved: '+e.message);window.parent.editorDiagnostic('Not saved: '+e.message);");
+ html=html.replace("announce('Cannot download: PDF rendering failed');return;","announce('Cannot download: PDF rendering failed');window.parent.editorDiagnostic('Cannot download: PDF rendering failed');return;");
+ // Preserve all editing tools for Web v0.5.2 Multi-page.
+ return html;
+}
+$('open').onclick=async()=>{
+ if(loading)return;const file=$('file').files[0];if(!file){setStatus('Select a PDF first.',true);return;}
+ if(file.size>12*1024*1024){setStatus('PDF exceeds the 12 MB size limit.',true);return;}
+ loading=true;$('open').disabled=true;document.body.classList.remove('ready');$('editor').hidden=true;setStatus('Opening PDF…');
+ try{
+  await init();log('Opening '+file.name+'…');
+  py.FS.writeFile('/tmp/multipage_original.pdf',new Uint8Array(await file.arrayBuffer()));
+  pageCount=Number(await py.runPythonAsync('multipage.open_pages()'));pageIndex=0;pendingPages.clear();
+  $('navigation').hidden=false;
+  const obj=JSON.parse(await py.runPythonAsync('multipage.open_page(0)'));
+  showEditor(obj);
+  $('editor').hidden=false;document.body.classList.add('ready');setStatus('');log('Ready. Double-click text to edit, or select Images / Icons / Lines to drag.');
+ }catch(e){reportError('Unable to open PDF.',e);}
+ finally{loading=false;$('open').disabled=false;}
+};
+
+function showEditor(obj){
+  let html=disableGraphics(editorHTML).replace('__MODEL__',JSON.stringify(obj.model));
+  const original='data:image/png;base64,'+obj.original,textless='data:image/png;base64,'+obj.textless;
+  html=html.replaceAll('/original.png',original).replaceAll('/textless.png',textless);
+  window.pdfFontURLs=obj.fonts;
+  for(const [name,url] of Object.entries(obj.fonts)){
+   html=html.replaceAll('/pdf-font/${encodeURIComponent(name)}','/pdf-font/${encodeURIComponent(name)}');
+   // Font-face URL is constructed at runtime by the editor, so inject a CSS override.
+   html=html.replace('</head>',`<style>@font-face{font-family:${JSON.stringify('PDF-'+name)};src:url(${JSON.stringify(url)});font-weight:normal}</style></head>`);
+  }
+
+  html=html.replace('<\/script>',"$('save').onclick=()=>window.parent.saveComplete();<\/script>");
+  $('editor').srcdoc=html;
+  $('counter').textContent=`Page ${pageIndex+1} / ${pageCount}`;
+  $('prev').disabled=pageIndex===0;$('next').disabled=pageIndex===pageCount-1;
+}
+async function collectEdits(){
+ const win=$('editor').contentWindow;
+ if(!win?.getCurrentPageEdits)throw Error('Editor is still loading. Please wait.');
+ const value=await win.collectStablePageEdits();
+ if(value._hasEdits)pendingPages.set(pageIndex,value);else pendingPages.delete(pageIndex);
+}
+async function renderPending(){
+  await collectEdits();
+  // Every edited page is reloaded from the original single-page source so the
+  // unchanged v0.5.2 editor sees the same PDF it always expected.
+  for(const [index, payload] of pendingPages){
+    await py.runPythonAsync(`multipage.open_page(${index})`);
+    py.globals.set('bridge_request',JSON.stringify(payload));
+    await py.runPythonAsync('multipage.render_page(bridge_request)');
+  }
+}
+async function navigate(target){
+ if(busyPage||loading||target<0||target>=pageCount)return;
+ busyPage=true;$('prev').disabled=$('next').disabled=$('complete').disabled=true;
+ try{
+  await collectEdits();pageIndex=target;
+  const obj=JSON.parse(await py.runPythonAsync(`multipage.open_page(${target})`));
+  showEditor(obj);
+  // Reopened pages restore the exact editable state by replaying original UI edits.
+  const saved=pendingPages.get(target);
+  if(saved)$('editor').addEventListener('load',()=>$('editor').contentWindow.restorePageEdits?.(saved),{once:true});
+  log(`Page ${target+1} of ${pageCount}`);
+ }catch(e){reportError('Unable to open this page.',e);}
+ finally{busyPage=false;$('complete').disabled=false;$('prev').disabled=pageIndex===0;$('next').disabled=pageIndex===pageCount-1;}
+}
+window.saveComplete=async()=>{
+ if(busyPage||loading)return;
+ busyPage=true;$('complete').disabled=true;
+ try{
+  await renderPending();
+  const data=await py.runPythonAsync('multipage.combine()');
+  window.downloadEditedPdf(data,'edited-complete-document.pdf');
+  log(`Saved ${pageCount} pages`);
+ }catch(e){reportError('Unable to save PDF.',e);}
+ finally{busyPage=false;$('complete').disabled=false;}
+};
+// UI-only enhancement: native file selection starts the existing verified loader.
+$('file').addEventListener('change',()=>{
+ const selected=$('file').files[0];
+ $('chosenFile').textContent=selected?.name||'No file selected';
+ $('chosenFile').title=selected?.name||'';
+ if(selected)$('open').click();
+});
+$('selectPdf').addEventListener('keydown',(event)=>{
+ if(event.key==='Enter'||event.key===' '){event.preventDefault();$('file').click();}
+});
+$('prev').onclick=()=>navigate(pageIndex-1);
+$('next').onclick=()=>navigate(pageIndex+1);
+$('complete').onclick=()=>window.saveComplete();
+// Start downloading before a visitor selects a PDF. A single promise handles the click too.
+void init().catch(()=>{});
+</script></body></html>
